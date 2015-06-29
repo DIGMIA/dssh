@@ -1,0 +1,114 @@
+import dssh.*;
+import dssh.authenticators.password.PasswordAuthenticator;
+import dssh.exceptions.*;
+import java.net.*;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+
+
+public class dssh implements SSHConnectionCreator {
+
+	boolean verbose = false;
+	
+	// Called by DSSH to inform us if we should be verbose or not
+	public void setVerbose(boolean verbose) {
+		this.verbose = verbose;
+	}
+
+	// utility function for regexp match
+        private boolean regexMatches(String where, String regexp) {
+                return Pattern.compile(".*" + regexp + ".*").matcher(where).matches();
+        }
+
+	// Let's create authenticated connection
+	public SSHConnection getAuthenticatedSSHConnection(String username, String host, int port, SSHConnection
+		par, SSHAuthenticator auth) {
+		
+		/* "par" contains parent connection (if we do SSH over SSH tunneling).
+		   DSSH would call this method with par = null, but we can use this
+		   method ourselves recursively, see below */
+		SSHConnection parent = par;
+		String user = username;
+		String myuser = System.getenv("USER");
+		String orighost = host;
+
+     	// let's start by simple examples. machine1.example.com does not listen on port
+		// 22, but on port 31337, so we'll fix this here, so user does not have to pass -p 31337
+		// to DSSH
+		if ((host.equals("machine1.example.com")) && (port == 22))
+			port = 31337;
+
+		/* let's continue with something more difficult. Hosts machine1.example.com and machine2.example.com, ...
+		   have port 22 protected by firewall and allow connections only from gateway.example.com or
+		   gateway2.example.com. So we'll first check if we are on one of these machines. If not, we
+		   connect to gateway.example.com and create our connection to target machine from there.
+		   Please note, that we connect to gateway.example.com as user myuser, which contains
+		   content of USER environment variable, which should contain our username. This assumes, that
+		   you have the same account on local and target machine. You can as well connect as a
+		   particular user to the gateway machine.
+		   
+		   Note: we use this exact function to get to gateway.example.com
+		*/
+		if (
+		      ((host.equals("machine1.example.com")) || (host.equals("machine2.example.com")) || (host.equals("fw1.example2.com")) )
+			&&
+			((System.getenv("HOSTNAME") == null) || (!(System.getenv("HOSTNAME").equals("gateway.example.com")) &&
+			(!System.getenv("HOSTNAME").equals("gateway2.example.com")))))
+			parent = getAuthenticatedSSHConnection(myuser, "gateway.example.com", 22, parent, auth);
+
+		/* These machines don't allow root login, so just for now log in as user "adminuser". Later (when
+		   DSSH requests interactive session), we will use command "su -" and type password from agent. */
+		if ( ((host.equals("machine3.example.com")) || (host.equals("machine4.example.com")) || (host.equals("machine5.example.com")))
+			 && (user.equals("root")) )
+				user = "adminuser";
+
+     	/* This host's DNS entry does not actually exist, it's on a private address and can be reached only from
+		   gateway.example.com as seen above. machine2.example.com is just fake hostname, we will replace it with
+		   IP address. (Note: if you create DNS or /etc/hosts entry on gateway.example.com, which resolves
+		   machine2.example.com, you don't have to do this. Resolving is done on parent connection, not on
+		   client side)  */
+		if (host.equals("machine2.example.com"))
+				host = "192.168.1.6";
+
+     	/* We handle anything, that contains .example2.com using this branch. It is a small network hidden
+		   by two firewalls. This should be pretty self-explanatory, if you understood examples above.
+		   Note: fw1.example2.com is reachable only from gateway.example.com or gateway2.example.com (see above),
+		   so if we connect from somewhere else, this script will first log into gateway.example.com, then to
+		   fw1.example.com and then to target machine. Recursion is very useful here :)
+		*/
+		if (regexMatches(host, "\\.example2\\.com")) {
+			if ((!host.equals("fw1.example2.com")) && (!host.equals("fw2.example2.com"))) {
+					parent = getAuthenticatedSSHConnection("adminuser", "fw1.example2.com", 22, parent, auth);
+					if (host.equals("www1.example2.com")) host = "192.168.121.220";
+					if (host.equals("www2.example2.com")) host = "192.168.121.221";
+					if (host.equals("www.example2.com")) host = "192.168.121.222";
+					if (host.equals("smtp1.example2.com")) host = "192.168.121.231";
+					if (host.equals("smtp2.example2.com")) host = "192.168.121.232";
+					if ((host.equals("smtp.example2.com")) || (host.equals("mail.example2.com"))) host = "192.168.121.230";
+				}
+		}
+
+		if (verbose)
+			System.out.println("Connecting to "+host);
+		SSHConnection conn = new SSHConnection(orighost, host, port, parent, auth);
+		conn.connect();
+		conn.authenticate(user);
+		return conn;
+	}
+
+	/* User requested interactive session. host parameter contains host name as passed to command line (which
+	   can be different from conn.getHost(), since we could have it rewritten by the function above*/
+	public InteractiveSession getInteractiveSession(SSHConnection conn, String username, PasswordAuthenticator pass, String host) {
+		// considering InteractiveSuSession only if we want to log in as root
+		if (username.equals("root")) {
+			// these machines have permitrootlogin disabled and we are authenticated as user adminuser, not root
+	                if ((host.equals("machine3.example.com")) || (host.equals("machine4.example.com")) || (host.equals("machine5.example.com")))
+				return new InteractiveSuSession(conn.openSession(), host, username, pass);
+		}
+		
+		// other users are authenticated normally and we create normal interactive session   		
+		return new InteractiveSession(conn.openSession());
+	}
+
+}
+

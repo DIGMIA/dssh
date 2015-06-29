@@ -1,0 +1,268 @@
+Digmia Secure Shell Introduction manual
+=======================================
+Juraj Bednar <juraj.bednar@digmia.com>
+v1.1x, 01.02.2010
+
+This document is an introduction to Digmia Secure Shell (DSSH for short). DSSH was
+written as a direct replacement for OpenSSH client for our use. DSSH adds SSH over
+SSH tunelling capabilities (for example to log in to network hidden by
+firewall), scripting support (using Groovy), advanced agent (which allows storing
+of passwords) and "su -" interactive logging for machines, which have disabled
+direct root login.
+
+All of this was done to enable automated scripting and logging to lots of machines
+based on few simple rules.
+
+It uses trilead SSH library (slightly patched). 
+
+Requirements
+------------
+
+DSSH requires:
+
+- a terminal emulator (Windows command prompt will not work for this purpose,
+   so only UNIX-like systems are currently supported)
+- Java runtime environment (at least 6.0)
+
+Supported platforms (out of the box):
+
+- Mac OS X on x86, x86_64 and PPC
+- Linux on x86 and amd64
+- FreeBSD 7
+- Solaris 10
+
+Installation
+------------
+
+First of all, you must have Java Runtime Environment (at least 6.0) already installed.
+If you have one of the supported platforms, you can download binary tarball, untar it
+and from the dssh-VERSION directory run:
+
+   ./scripts/install.sh /usr/local/lib/dssh
+
+(/usr/local/lib/dssh can be obviously changed to a different directory). The install
+script will create /etc/dssh/dssh.opts, which you can examine (you at least need to
+correct path to java binary).
+
+It will also tell you to create symbolic links or add /usr/local/lib/dssh/scripts to
+your path. 
+
+You can test your installation by running 
+
+   dssh username@server
+
+and see if you get in.
+
+Compilation
+-----------
+
+In case you want to recompile DSSH, you need to grab source distribution. Easiest
+way to recompile is to use NetBeans.
+
+In jniconsole directory are some C++ binaries, which can be slightly modified to
+compile under different UNIX-like systems (it uses only POSIX calls, but includes
+will probably need to be corrected for each OS). Please contribute your changes back.
+
+DSSH command suite
+------------------
+
+DSSH consists of several commands.
+
+dssh
+~~~~
+
+This is the basic command. You can see it's full help by calling dssh -h. Basically,
+it should work similiary to OpenSSH client.
+
+It uses a few environment variables:
+
+- DSSHSCRIPTNAME - path to the bsh script name. If not specified (and there's
+  no -g command line option), dssh looks for file ~/.dssh/dssh.bsh and dssh.bsh
+  in current directory (in this order).
+- DSSHAGENT - location of dssh agent (see below). Same as specifying -a option (which
+  takes precedence).
+
+dssh-agent
+~~~~~~~~~~
+
+dssh-agent is a simple credidentals storage similiar to ssh-agent. It allows for
+storage of plaintext password in addition to private keys. This is useful if you want
+to authenticate as root to a server, which has disabled PermitRootLogin.
+
+dssh and dssh-agent communicate through SSL-protected channel. You need to create
+a keypair, so dssh and dssh-agent would recognize (and trust) each other. Full SSL
+authentication/encryption is possible, but in most simple cases, you just pair dssh
+and dssh-agent using a keypair, that is shared between these programs. To do this,
+run dssh-create-keystore script included with distribution.
+
+Then you can run dssh-agent like this:
+
+   dssh-agent 1234 &
+
+where 1234 is a port, on which agent listens.
+
+dssh-add
+~~~~~~~~
+
+Similiary to ssh-add, dssh-add allows adding passwords and private keys to dssh-agent's
+key store. We recommend setting DSSHAGENT variable like this:
+
+   export DSSHAGENT=1234
+
+This will ease your life, as you don't have to specify -a options to dssh or dssh-add every time.
+Adding private key is easy:
+
+   dssh-add -i ~/.ssh/id_dsa
+
+Will add ~/.ssh/id_dsa key, asking for passphrase if necessary.
+
+You can load a file in CSV format, which contains passwords and has the following structure:
+
+   server1.digmia.com;22;root;dorka;www-server1.digmia.com
+   server2.digmia.com;22;root;dorka;www-server2.digmia.com;www-server3.digmia.com
+
+First column is server name, second column is port, third column is username,
+fourth column is password and any additional columns are optional and are aliases
+for the machine. If you have several entries for one machine, you need to specify
+aliases only once.
+
+We recommend keeping this file on disk encrypted and loading it for example like this:
+
+   gpg --decrypt dssh-passwords.csv.gpg | dssh -l
+
+Scripting
+---------
+
+One of the strengths of dssh is BeanShell scripting support. Default script name is ~/.dssh/dssh.bsh.
+
+Script should implement one class, that implements SSHConnectionCreator interface. It basically
+requires three methods:
+
+   public void setVerbose(boolean verbose);
+   public SSHConnection getAuthenticatedSSHConnection(String username, String host, int port, SSHConnection
+   		par, SSHAuthenticator auth);
+   public InteractiveSession getInteractiveSession(SSHConnection conn, String username, PasswordAuthenticator pass, String host) {
+
+setVerbose is called by DSSH to inform your script if it should be verbose or not (passing true
+when dssh is called with -v). You can either ignore this call (having the method empty) or
+remember it for further use later.
+
+getAuthenticatedSSHConnection is called when dssh wants to connect to a particular server. It
+should return authenticated SSH connection without creating session. This connection can either
+be used for creating port forwards, interactive sessions or copying files (not yet implemented).
+Cascading through tunnels is implemented here.
+
+Finally, when user wants to enter interactive session, getInteractiveSession is called, which
+should return an InteractiveSession or it's subclass (currently, InteractiveSuSession is
+implemented).
+
+To best understand how scripts work, I am including a fairly advanced and well-commented example
+in documentation directory.
+  
+History and copyright
+---------------------
+
+DSSH is (c) Juraj Bednar, Digmia s.r.o. and can be redistributed and used under
+conditions of GPLv2.
+
+It uses Trilead-SSH, which has the following license:
+
+   The Trilead SSH for Java library is released under a BSD style license.
+   
+   Copyright (c) 2007 Trilead AG (http://www.trilead.com)
+   
+   All rights reserved.
+   
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions
+   are met:
+   
+   a.) Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
+   b.) Redistributions in binary form must reproduce the above copyright
+       notice, this list of conditions and the following disclaimer in the
+       documentation and/or other materials provided with the distribution.
+   c.) Neither the name of Trilead nor the names of its contributors may
+       be used to endorse or promote products derived from this software
+       without specific prior written permission.
+   
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+   POSSIBILITY OF SUCH DAMAGE.
+   
+   Trilead SSH-2 for Java includes code that was written by Dr. Christian Plattner
+   during his PhD at ETH Zurich. The license states the following:
+   
+   Copyright (c) 2005 - 2006 Swiss Federal Institute of Technology (ETH Zurich),
+     Department of Computer Science (http://www.inf.ethz.ch),
+     Christian Plattner. All rights reserved.
+   
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions
+   are met:
+   
+   a.) Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
+   b.) Redistributions in binary form must reproduce the above copyright
+       notice, this list of conditions and the following disclaimer in the
+       documentation and/or other materials provided with the distribution.
+   c.) Neither the name of ETH Zurich nor the names of its contributors may
+       be used to endorse or promote products derived from this software
+       without specific prior written permission.
+   
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+   POSSIBILITY OF SUCH DAMAGE.
+   
+   The Java implementations of the AES, Blowfish and 3DES ciphers have been
+   taken (and slightly modified) from the cryptography package released by
+   "The Legion Of The Bouncy Castle".
+   
+   Their license states the following:
+   
+   Copyright (c) 2000 - 2004 The Legion Of The Bouncy Castle
+   (http://www.bouncycastle.org)
+   
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+   
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software.
+   
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+   THE SOFTWARE. 
+   
+SSH is a registered trademark of SSH Communications Security Corp
+in the United States and in certain other jurisdictions. Java and
+J2ME are trademarks or registered trademarks of Sun Microsystems,
+Inc. in the United States and other countries. All other names and
+marks are property of their respective owners.
+
+It also uses OpenCSV, which is under Apache 2 license (http://www.apache.org/licenses/LICENSE-2.0).
+
+GNU GetOpt is under LGPL license (http://www.gnu.org/copyleft/library.html)
