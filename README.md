@@ -28,7 +28,7 @@ Out of the box these platforms are supported:
 Installation and usage
 ======================
 
-Please see documentation in the tarball. Alternatively, you can read introduction and dssh.bsh example (highlighted for viewing , downloadable)
+Please see [documentation](https://raw.githubusercontent.com/DIGMIA/dssh/master/doc/introduction.txt). Also see [example dssh.bsh](https://raw.githubusercontent.com/DIGMIA/dssh/master/doc/dssh-example.bsh).
 
 Common problems
 ===============
