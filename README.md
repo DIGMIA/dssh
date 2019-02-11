@@ -1,11 +1,16 @@
 DSSH
 ====
 
-DSSH is Digmia Secure Shell. It was written as a direct replacement for OpenSSH client for our use. DSSH adds SSH over SSH tunelling capabilities (for example to log in to network which is behind by firewall that supports SSH), scripting support (using BeanShell), advanced agent (which allows storing of passwords) and "su -" interactive logging for machines, which have disabled direct root login.
+DSSH is a scriptable secure shell (ssh). It was written as a direct replacement for OpenSSH client for our use. DSSH adds SSH over SSH tunelling capabilities (for example to log in to network which is behind by firewall that supports SSH), scripting support (using BeanShell), advanced agent (which allows storing of passwords) and "su -" interactive logging for machines, which have disabled direct root login.
 
 All of this was done to enable automated scripting and logging to lots of machines based on a few simple rules.
 
 It uses Trilead SSH library (slightly patched, included).
+
+Warning
+=======
+
+This software is *no longer maintained in this repository*. There is a newer version that is not released publicly by the original sponsor of the software, so this branch will no longer be maintained.
 
 Requirements
 ============
